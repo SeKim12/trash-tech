@@ -1,7 +1,7 @@
 import cv2 as cv
 import numpy as np
 import torch 
-import torchvision.transforms as T
+import torchvision.transforms as transforms
 
 from sklearn.cluster import KMeans
 from torchvision.datasets import ImageFolder
@@ -117,26 +117,32 @@ class SiftExtractor:
 
 
 def generate_split(data_dir="data/dataset-resized", fracs=[0.8, 0.1, 0.1], seed=42):
-  generator = torch.Generator().manual_seed(seed)
+    generator = torch.Generator().manual_seed(seed)
 
-  imgs = ImageFolder(data_dir, T.Compose([lambda x: np.asarray(x)]))
-  labels, counts = np.unique(imgs.targets, return_counts=True)
-  dataset = {
-    "train": [],
-    "val": [], 
-    "test": [], 
-  }
+    transform = transforms.Compose([
+        transforms.Resize((224, 224)),
+        transforms.ToTensor(),
+        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+    ])
 
-  start = 0
-  for i in range(len(labels)):
-    train, val, test = random_split(Subset(imgs, np.arange(start, start + counts[i])), fracs, generator)
-    dataset["train"].append(train)
-    dataset["val"].append(val)
-    dataset["test"].append(test)
-    start += counts[i]
-  
-  dataset["train"] = ConcatDataset(dataset["train"])
-  dataset["val"] = ConcatDataset(dataset["val"])
-  dataset["test"] = ConcatDataset(dataset["test"])
+    imgs = ImageFolder(data_dir, transform)
+    labels, counts = np.unique(imgs.targets, return_counts=True)
+    dataset = {
+        "train": [],
+        "val": [], 
+        "test": [], 
+    }
 
-  return dataset
+    start = 0
+    for i in range(len(labels)):
+        train, val, test = random_split(Subset(imgs, np.arange(start, start + counts[i])), fracs, generator)
+        dataset["train"].append(train)
+        dataset["val"].append(val)
+        dataset["test"].append(test)
+        start += counts[i]
+    
+    dataset["train"] = ConcatDataset(dataset["train"])
+    dataset["val"] = ConcatDataset(dataset["val"])
+    dataset["test"] = ConcatDataset(dataset["test"])
+
+    return dataset
