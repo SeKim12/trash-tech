@@ -11,6 +11,7 @@ from sklearn.metrics import precision_score, recall_score, accuracy_score, confu
 import numpy as np
 import seaborn as sns
 import matplotlib.pyplot as plt
+from tqdm import tqdm
 
 def get_model(model_name):
     if model_name == 'resnet':
@@ -49,6 +50,7 @@ all_labels = []
 all_preds = []
 for epoch in range(args.epochs):
     model.train()
+    pbar = tqdm(total=len(train_loader), desc=f"Epoch {epoch+1}/{args.epochs}, Training")
     for inputs, labels in train_loader:
         inputs = inputs.to(device)
         labels = labels.to(device)
@@ -57,8 +59,11 @@ for epoch in range(args.epochs):
         loss = criterion(outputs, labels)
         loss.backward()
         optimizer.step()
+        pbar.update()
+    pbar.close()
 
     model.eval()
+    pbar = tqdm(total=len(test_loader), desc=f"Epoch {epoch+1}/{args.epochs}, Testing")
     with torch.no_grad():
         for inputs, labels in test_loader:
             inputs = inputs.to(device)
@@ -67,6 +72,9 @@ for epoch in range(args.epochs):
             _, preds = torch.max(outputs, 1)
             all_labels.extend(labels.cpu().numpy())
             all_preds.extend(preds.cpu().numpy())
+            pbar.update()
+    pbar.close()
+
 
 # Compute metrics after all epochs are completed
 accuracy = accuracy_score(all_labels, all_preds)
