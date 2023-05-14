@@ -75,7 +75,7 @@ for epoch in range(args.epochs):
             pbar.update()
     pbar.close()
 
-
+print('Training and testing complete.')
 # Compute metrics after all epochs are completed
 accuracy = accuracy_score(all_labels, all_preds)
 precision = precision_score(all_labels, all_preds, average='macro')
@@ -84,6 +84,10 @@ conf_matrix = confusion_matrix(all_labels, all_preds)
 
 # Save final model and metrics
 torch.save(model.state_dict(), 'final_model.pth')
+print(f'Final Metrics after {args.epochs} epochs:')
+print(f'Accuracy: {accuracy}')
+print(f'Precision: {precision}')
+print(f'Recall: {recall}')
 
 with open('final_metrics.txt', 'w') as f:
     f.write(f'Final Metrics after {args.epochs} epochs:\n')
@@ -91,7 +95,8 @@ with open('final_metrics.txt', 'w') as f:
     f.write(f'Precision: {precision}\n')
     f.write(f'Recall: {recall}\n')
 
+print('Final confusion matrix:')
 # Save and visualize final confusion matrix
 np.save('final_confusion_matrix.npy', conf_matrix)
 sns.heatmap(conf_matrix, annot=True)
-plt.savefig('final_confusion_matrix.jpg')
+plt.savefig('final_confusion_matrix.png')
