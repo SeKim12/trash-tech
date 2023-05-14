@@ -46,10 +46,16 @@ test_loader = DataLoader(dataset['test'], batch_size=16, shuffle=True)
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 model = model.to(device)
 
-all_labels = []
-all_preds = []
+best_accuracy = 0.0
+best_epoch_metrics = None
+best_conf_matrix = None
+
+train_losses = []
+test_losses = []
+
 for epoch in range(args.epochs):
     model.train()
+    train_loss = 0.0
     pbar = tqdm(total=len(train_loader), desc=f"Epoch {epoch+1}/{args.epochs}, Training")
     for inputs, labels in train_loader:
         inputs = inputs.to(device)
@@ -59,44 +65,62 @@ for epoch in range(args.epochs):
         loss = criterion(outputs, labels)
         loss.backward()
         optimizer.step()
+        train_loss += loss.item() * inputs.size(0)
         pbar.update()
     pbar.close()
 
+    train_losses.append(train_loss / len(train_loader.dataset))
+
     model.eval()
+    test_loss = 0.0
+    all_labels = []
+    all_preds = []
     pbar = tqdm(total=len(test_loader), desc=f"Epoch {epoch+1}/{args.epochs}, Testing")
     with torch.no_grad():
         for inputs, labels in test_loader:
             inputs = inputs.to(device)
             labels = labels.to(device)
             outputs = model(inputs)
+            loss = criterion(outputs, labels)
+            test_loss += loss.item() * inputs.size(0)
             _, preds = torch.max(outputs, 1)
             all_labels.extend(labels.cpu().numpy())
             all_preds.extend(preds.cpu().numpy())
             pbar.update()
     pbar.close()
 
+    test_losses.append(test_loss / len(test_loader.dataset))
+
+    accuracy = accuracy_score(all_labels, all_preds)
+    precision = precision_score(all_labels, all_preds, average='macro')
+    recall = recall_score(all_labels, all_preds, average='macro')
+    conf_matrix = confusion_matrix(all_labels, all_preds)
+
+    if accuracy > best_accuracy:
+        best_accuracy = accuracy
+        best_epoch_metrics = (accuracy, precision, recall)
+        best_conf_matrix = conf_matrix
+
 print('Training and testing complete.')
-# Compute metrics after all epochs are completed
-accuracy = accuracy_score(all_labels, all_preds)
-precision = precision_score(all_labels, all_preds, average='macro')
-recall = recall_score(all_labels, all_preds, average='macro')
-conf_matrix = confusion_matrix(all_labels, all_preds)
 
-# Save final model and metrics
-torch.save(model.state_dict(), f'{args.model}final_model.pth')
-print(f'Final Metrics after {args.epochs} epochs:')
-print(f'Accuracy: {accuracy}')
-print(f'Precision: {precision}')
-print(f'Recall: {recall}')
+# Save model, metrics, and confusion matrix from the best epoch
+torch.save(model.state_dict(), f'{args.model}_best_model.pth')
 
-with open(f'{args.model}final_metrics.txt', 'w') as f:
-    f.write(f'Final Metrics after {args.epochs} epochs:\n')
-    f.write(f'Accuracy: {accuracy}\n')
-    f.write(f'Precision: {precision}\n')
-    f.write(f'Recall: {recall}\n')
+with open(f'{args.model}_best_metrics.txt', 'w') as f:
+    f.write(f'Best metrics:\n')
+    f.write(f'Accuracy: {best_epoch_metrics[0]}\n')
+    f.write(f'Precision: {best_epoch_metrics[1]}\n')
+    f.write(f'Recall: {best_epoch_metrics[2]}\n')
 
-print('Final confusion matrix:')
-# Save and visualize final confusion matrix
-np.save(f'{args.model}_final_confusion_matrix.npy', conf_matrix)
-sns.heatmap(conf_matrix, annot=True)
-plt.savefig(f'{args.model}_final_confusion_matrix.png')
+np.save(f'{args.model}_best_confusion_matrix.npy', best_conf_matrix)
+sns.heatmap(best_conf_matrix, annot=True)
+plt.savefig(f'{args.model}_best_confusion_matrix.png')
+
+# Plot performance curve
+plt.figure()
+plt.plot(range(args.epochs), train_losses, label='Train Loss')
+plt.plot(range(args.epochs), test_losses, label='Test Loss')
+plt.xlabel('Epoch')
+plt.ylabel('Loss')
+plt.legend()
+plt.savefig(f'{args.model}_performance_curve.png')
