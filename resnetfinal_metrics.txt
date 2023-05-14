@@ -1,0 +1,4 @@
+Final Metrics after 20 epochs:
+Accuracy: 0.9115537848605577
+Precision: 0.8955884759828363
+Recall: 0.8918643646011102
