@@ -1,0 +1,4 @@
+Best metrics:
+Accuracy: 0.9203187250996016
+Precision: 0.9218255018863379
+Recall: 0.917992839804539
