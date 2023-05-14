@@ -83,13 +83,13 @@ recall = recall_score(all_labels, all_preds, average='macro')
 conf_matrix = confusion_matrix(all_labels, all_preds)
 
 # Save final model and metrics
-torch.save(model.state_dict(), 'final_model.pth')
+torch.save(model.state_dict(), f'{args.model}final_model.pth')
 print(f'Final Metrics after {args.epochs} epochs:')
 print(f'Accuracy: {accuracy}')
 print(f'Precision: {precision}')
 print(f'Recall: {recall}')
 
-with open('final_metrics.txt', 'w') as f:
+with open(f'{args.model}final_metrics.txt', 'w') as f:
     f.write(f'Final Metrics after {args.epochs} epochs:\n')
     f.write(f'Accuracy: {accuracy}\n')
     f.write(f'Precision: {precision}\n')
@@ -97,6 +97,6 @@ with open('final_metrics.txt', 'w') as f:
 
 print('Final confusion matrix:')
 # Save and visualize final confusion matrix
-np.save('final_confusion_matrix.npy', conf_matrix)
+np.save(f'{args.model}_final_confusion_matrix.npy', conf_matrix)
 sns.heatmap(conf_matrix, annot=True)
-plt.savefig('final_confusion_matrix.png')
+plt.savefig(f'{args.model}_final_confusion_matrix.png')
