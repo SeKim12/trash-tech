@@ -13,6 +13,8 @@ import seaborn as sns
 import matplotlib.pyplot as plt
 from tqdm import tqdm
 
+import time
+
 def get_model(model_name):
     if model_name == 'resnet':
         model = resnet50(pretrained=True)
@@ -52,6 +54,7 @@ best_conf_matrix = None
 
 train_losses = []
 test_losses = []
+test_times = []
 
 for epoch in range(args.epochs):
     model.train()
@@ -76,11 +79,23 @@ for epoch in range(args.epochs):
     all_labels = []
     all_preds = []
     pbar = tqdm(total=len(test_loader), desc=f"Epoch {epoch+1}/{args.epochs}, Testing")
+
+    avg_inference_time = 0
+    count = 0
+
     with torch.no_grad():
         for inputs, labels in test_loader:
             inputs = inputs.to(device)
             labels = labels.to(device)
+            
+            start = time.time()
+
             outputs = model(inputs)
+            
+            end = time.time() 
+            avg_inference_time += end - start
+            count += 1
+
             loss = criterion(outputs, labels)
             test_loss += loss.item() * inputs.size(0)
             _, preds = torch.max(outputs, 1)
@@ -88,6 +103,9 @@ for epoch in range(args.epochs):
             all_preds.extend(preds.cpu().numpy())
             pbar.update()
     pbar.close()
+
+    avg_inference_time /= count
+    test_times.append(avg_inference_time)
 
     test_losses.append(test_loss / len(test_loader.dataset))
 
@@ -100,6 +118,13 @@ for epoch in range(args.epochs):
         best_accuracy = accuracy
         best_epoch_metrics = (accuracy, precision, recall)
         best_conf_matrix = conf_matrix
+
+avg_time_all_epochs = sum(test_times) / len(test_times)
+with open(f'{args.model}_inference_times.txt', 'w') as f:
+    f.write("Average Inference Time of Batch, each Epoch")
+    for t in range(len(test_times)):
+        f.write(f"Epoch {t + 1}: {test_times[t]}")
+    f.write(f"Average Inference Time of Batch, all Epochs: {avg_time_all_epochs}")
 
 print('Training and testing complete.')
 
