@@ -35,14 +35,14 @@ parser.add_argument('--model', type=str, required=True, help="Model name: 'resne
 parser.add_argument('--epochs', type=int, required=True, help='Number of epochs')
 args = parser.parse_args()
 
-model = get_model(args.model)
-criterion = nn.CrossEntropyLoss()
-optimizer = torch.optim.SGD(model.parameters(), lr=0.001, momentum=0.9)
 
 dataset = generate_split()
 train_loader = DataLoader(dataset['train'], batch_size=16, shuffle=True)
 test_loader = DataLoader(dataset['test'], batch_size=16, shuffle=True)
 
+model = get_model(args.model)
+criterion = nn.CrossEntropyLoss()
+optimizer = torch.optim.SGD(model.parameters(), lr=0.001, momentum=0.9)
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 model = model.to(device)
 
