@@ -16,6 +16,8 @@ TRAIN_RESULTS_DIR = "train_results"
 CHECKPOINT_DIR = "checkpoint"
 DATA_DIR = "data/dataset-resized"
 
+os.makedirs(CHECKPOINT_DIR, exist_ok=True)
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--debug", type=bool, default=False)
