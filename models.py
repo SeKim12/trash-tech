@@ -1,65 +1,92 @@
-import argparse
 import torch
 import torch.nn as nn
-import torchvision.transforms as transforms
-from torchvision.models import resnet50, vgg16
-from transformers import ViTModel
-from torch.utils.data import DataLoader
-from torchvision.datasets import ImageFolder
-from data.pipeline import generate_split
-from sklearn.metrics import precision_score, recall_score, accuracy_score, confusion_matrix
-import numpy as np
-import seaborn as sns
-import matplotlib.pyplot as plt
+from torchvision.models import resnet50, vgg16, vit_b_16
+from sklearn.metrics import (
+    precision_score,
+    recall_score,
+    accuracy_score,
+    confusion_matrix,
+)
 from tqdm import tqdm
-from collections import defaultdict
 import time
+import os
 
-def get_model(model_name, dropout_rate, initializer='xavier'):
-    if model_name == 'resnet':
-        model = resnet50(pretrained=True)
+
+def get_model(model_name, dropout_rate, initializer="xavier"):
+    init = None
+    if initializer == "xavier":
+        init = nn.init.xavier_uniform_
+    elif initializer == "he":
+        init = nn.init.kaiming_uniform_
+    else:
+        init = nn.init.normal_
+
+    if model_name == "resnet":
+        print("Retreiving Pre-trained ResNet50...")
+        model = resnet50(weights="ResNet50_Weights.DEFAULT")
         num_ftrs = model.fc.in_features
-        model.fc = nn.Sequential(
-            nn.Dropout(dropout_rate),
-            nn.Linear(num_ftrs, 6)
-        )
-    elif model_name == 'vgg16':
-        model = vgg16(pretrained=True)
+
+        for param in model.parameters():
+            param.requires_grad = False
+
+        model.fc = nn.Sequential(nn.Dropout(dropout_rate), nn.Linear(num_ftrs, 6))
+
+        init(model.fc[1].weight)
+
+    elif model_name == "vgg16":
+        print("Retreiving VGG16...")
+        model = vgg16(weights="VGG16_Weights.DEFAULT")
         num_ftrs = model.classifier[6].in_features
+
+        for param in model.parameters():
+            param.requires_grad = False
+
         model.classifier[6] = nn.Sequential(
-            nn.Dropout(dropout_rate),
-            nn.Linear(num_ftrs, 6)
+            nn.Dropout(dropout_rate), nn.Linear(num_ftrs, 6)
         )
-    elif model_name == 'vit':
-        model = ViTModel.from_pretrained('google/vit-base-patch16-224')
-        num_ftrs = model.config.hidden_size
-        model.classifier = nn.Sequential(
-            nn.Dropout(dropout_rate),
-            nn.Linear(num_ftrs, 6)
-        )
+
+        init(model.classifier[6][1].weight)
+
+    elif model_name == "vit":
+        # model = ViTModel.from_pretrained('google/vit-base-patch16-224')
+        print("Retreiving ViT...")
+        model = vit_b_16(weights="ViT_B_16_Weights.DEFAULT")
+        num_ftrs = model.heads[0].in_features
+
+        for param in model.parameters():
+            param.requires_grad = False
+
+        model.heads[0] = nn.Sequential(nn.Dropout(dropout_rate), nn.Linear(num_ftrs, 6))
+
+        init(model.heads[0][1].weight)
+
     else:
         raise ValueError("Invalid model name. Choose from 'resnet', 'vgg16', 'vit'.")
-    if initializer == 'xavier':
-        nn.init.xavier_uniform_(model.fc.weight)
-    elif initializer == 'he':
-        nn.init.kaiming_uniform_(model.fc.weight)
-    elif initializer == 'normal':
-        nn.init.normal_(model.fc.weight)
-    # you can add more initializers here
 
     return model
 
-parser = argparse.ArgumentParser()
-parser.add_argument('--model', type=str, required=True, help="Model name: 'resnet', 'vgg16', or 'vit'")
-parser.add_argument('--epochs', type=int, default = 20, help='Number of epochs')
-parser.add_argument('--lr', type=float, default=0.001, help='Learning rate')
-parser.add_argument('--dropout_rate', type=float, default=0.5, help='Dropout rate')
-args = parser.parse_args()
 
-def train_model(model, criterion, optimizer, train_loader, epochs, device):
+def train_model(
+    model,
+    config,
+    criterion,
+    optimizer,
+    train_loader,
+    val_loader,
+    epochs,
+    device,
+    glob_best_val_acc,
+):
     train_losses = []
+    val_losses = []
+
+    # save best metrics for each hyperparameter configuration
+    # i.e. record all metrics, but save only the best (across all hyperparameters) model
+    best_val_metrics = {}
+
     for epoch in range(epochs):
         model.train()
+
         train_loss = 0.0
         pbar = tqdm(total=len(train_loader), desc=f"Epoch {epoch+1}/{epochs}, Training")
         for inputs, labels in train_loader:
@@ -76,7 +103,36 @@ def train_model(model, criterion, optimizer, train_loader, epochs, device):
 
         train_losses.append(train_loss / len(train_loader.dataset))
 
-    return train_losses
+        # validate per epoch
+        val_metrics, val_loss, _ = test_model(model, criterion, val_loader, device)
+
+        # save best validation metric (for each hyperparameter)
+        if val_metrics["accuracy"] > best_val_metrics.get("accuracy", -1):
+            best_val_metrics = val_metrics
+
+        # only save best model (across all hyperparameters) for testing
+        if val_metrics["accuracy"] > glob_best_val_acc:
+            print(
+                "New Best Validation Accuracy: {:.4f}".format(val_metrics["accuracy"])
+            )
+
+            glob_best_val_acc = val_metrics["accuracy"]
+            to_save = model.module if hasattr(model, "module") else model
+            torch.save(
+                dict(
+                    epoch=epoch,
+                    model_state_dict=to_save.state_dict(),
+                    optimizer_state_dict=optimizer.state_dict(),
+                    args=config,
+                ),
+                os.path.join(
+                    config["checkpoint_dir"], "{}.pt".format(config["model_name"])
+                ),
+            )
+
+        val_losses.append(val_loss)
+
+    return train_losses, val_losses, val_metrics, glob_best_val_acc
 
 
 def test_model(model, criterion, test_loader, device):
@@ -84,8 +140,6 @@ def test_model(model, criterion, test_loader, device):
     test_loss = 0.0
     all_labels = []
     all_preds = []
-    test_losses = []
-    test_times = []
     pbar = tqdm(total=len(test_loader), desc=f"Testing")
 
     avg_inference_time = 0
@@ -95,12 +149,12 @@ def test_model(model, criterion, test_loader, device):
         for inputs, labels in test_loader:
             inputs = inputs.to(device)
             labels = labels.to(device)
-            
+
             start = time.time()
 
             outputs = model(inputs)
-            
-            end = time.time() 
+
+            end = time.time()
             avg_inference_time += end - start
             count += 1
 
@@ -112,91 +166,20 @@ def test_model(model, criterion, test_loader, device):
             pbar.update()
     pbar.close()
 
-    avg_inference_time /= count
-    test_times.append(avg_inference_time)
-
-    test_losses.append(test_loss / len(test_loader.dataset))
-
+    avg_inference_time /= count  # this is average time / batch
+    test_loss = test_loss / len(test_loader.dataset)
     accuracy = accuracy_score(all_labels, all_preds)
-    precision = precision_score(all_labels, all_preds, average='macro')
-    recall = recall_score(all_labels, all_preds, average='macro')
+    precision = precision_score(all_labels, all_preds, average="macro")
+    recall = recall_score(all_labels, all_preds, average="macro")
     conf_matrix = confusion_matrix(all_labels, all_preds)
 
     test_metrics = {
-        'accuracy': accuracy,
-        'precision': precision,
-        'recall': recall,
-        'conf_matrix': conf_matrix,
-        'test_losses': test_losses,
+        "accuracy": accuracy,
+        "precision": precision,
+        "recall": recall,
+        "test_loss": test_loss,
+        "inference_time_per_batch": avg_inference_time,
+        "total_inference_time": avg_inference_time * count,
     }
 
-    return test_metrics, test_losses
-
-learning_rates = [0.1, 0.01, 0.001]
-dropout_rates = [0.1, 0.2, 0.3]
-initializers = ['xavier', 'he', 'normal']
-
-dataset = generate_split()
-train_loader = DataLoader(dataset['train'], batch_size=16, shuffle=True)
-test_loader = DataLoader(dataset['test'], batch_size=16, shuffle=True)
-device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-
-best_accuracy = 0
-best_metrics = defaultdict(list)
-best_hyperparams = None
-best_model = None
-best_train_losses = None
-best_test_losses = None
-
-# perform a grid search over all combinations of hyperparameters
-for lr in learning_rates:
-    for dropout_rate in dropout_rates:
-        for initializer in initializers:
-            model = get_model('resnet', dropout_rate, initializer)  # replace 'resnet' with your preferred model
-            model = model.to(device)
-            criterion = nn.CrossEntropyLoss()
-            optimizer = torch.optim.Adam(model.parameters(), lr=lr)
-
-            train_losses = train_model(model, criterion, optimizer, train_loader, args.epochs)
-            test_metrics, test_losses = test_model(model, criterion, test_loader)
-
-            # if the model with the current set of hyperparameters
-            # has a better accuracy than the previous best model,
-            # update the best accuracy and best set of hyperparameters
-            if test_metrics['accuracy'] > best_accuracy:
-                best_model = model
-                best_metrics = test_metrics
-                best_hyperparams = {'learning_rate': lr, 'dropout_rate': dropout_rate, 'initializer': initializer}
-                best_train_losses = train_losses
-                best_test_losses = test_losses
-
-avg_time_all_epochs = sum(test_times) / len(test_times)
-with open(f'{args.model}_inference_times.txt', 'w') as f:
-    f.write("Average Inference Time of Batch, each Epoch")
-    for t in range(len(test_times)):
-        f.write(f"Epoch {t + 1}: {test_times[t]}")
-    f.write(f"Average Inference Time of Batch, all Epochs: {avg_time_all_epochs}")
-
-print('Training and testing complete.')
-
-# Save model, metrics, and confusion matrix from the best epoch
-torch.save(best_model.state_dict(), f'{args.model}_best_model.pth')
-
-with open(f'results/{args.model}_best_metrics.txt', 'w') as f:
-    f.write(f'Best metrics:\n')
-    f.write(f'Accuracy: {best_metrics["accuracy"]}\n')
-    f.write(f'Precision: {best_metrics["precision"]}\n')
-    f.write(f'Recall: {best_metrics["recall"]}\n')
-
-np.save(f'results/{args.model}_best_confusion_matrix.npy', best_metrics['conf_matrix'])
-sns.heatmap(best_metrics['conf_matrix'], annot=True)
-plt.savefig(f'results/{args.model}_best_confusion_matrix.png')
-
-# Plot performance curve of best model
-plt.figure()
-plt.plot(range(args.epochs), best_train_losses, label='Train Loss')
-plt.plot(range(args.epochs), best_test_losses, label='Test Loss')
-plt.xlabel('Epoch')
-plt.ylabel('Loss')
-plt.legend()
-plt.savefig(f'results/{args.model}_performance_curve.png')
+    return test_metrics, test_loss, conf_matrix
