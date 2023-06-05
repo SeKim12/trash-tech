@@ -13,6 +13,7 @@ import seaborn as sns
 import matplotlib.pyplot as plt
 from tqdm import tqdm
 from collections import defaultdict
+import time
 
 def get_model(model_name, dropout_rate, initializer='xavier'):
     if model_name == 'resnet':
@@ -56,7 +57,6 @@ parser.add_argument('--dropout_rate', type=float, default=0.5, help='Dropout rat
 args = parser.parse_args()
 
 def train_model(model, criterion, optimizer, train_loader, epochs, device):
-
     train_losses = []
     for epoch in range(epochs):
         model.train()
@@ -86,11 +86,23 @@ def test_model(model, criterion, test_loader, device):
     all_preds = []
     test_losses = []
     pbar = tqdm(total=len(test_loader), desc=f"Testing")
+
+    avg_inference_time = 0
+    count = 0
+
     with torch.no_grad():
         for inputs, labels in test_loader:
             inputs = inputs.to(device)
             labels = labels.to(device)
+            
+            start = time.time()
+
             outputs = model(inputs)
+            
+            end = time.time() 
+            avg_inference_time += end - start
+            count += 1
+
             loss = criterion(outputs, labels)
             test_loss += loss.item() * inputs.size(0)
             _, preds = torch.max(outputs, 1)
@@ -99,6 +111,9 @@ def test_model(model, criterion, test_loader, device):
             pbar.update()
     pbar.close()
 
+    avg_inference_time /= count
+    test_times.append(avg_inference_time)
+
     test_losses.append(test_loss / len(test_loader.dataset))
 
     accuracy = accuracy_score(all_labels, all_preds)
@@ -106,54 +121,17 @@ def test_model(model, criterion, test_loader, device):
     recall = recall_score(all_labels, all_preds, average='macro')
     conf_matrix = confusion_matrix(all_labels, all_preds)
 
-    test_metrics = {
-        'accuracy': accuracy,
-        'precision': precision,
-        'recall': recall,
-        'conf_matrix': conf_matrix,
-        'test_losses': test_losses,
-    }
+    if accuracy > best_accuracy:
+        best_accuracy = accuracy
+        best_epoch_metrics = (accuracy, precision, recall)
+        best_conf_matrix = conf_matrix
 
-    return test_metrics, test_losses
-
-learning_rates = [0.1, 0.01, 0.001]
-dropout_rates = [0.1, 0.2, 0.3]
-initializers = ['xavier', 'he', 'normal']
-
-dataset = generate_split()
-train_loader = DataLoader(dataset['train'], batch_size=16, shuffle=True)
-test_loader = DataLoader(dataset['test'], batch_size=16, shuffle=True)
-device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-
-best_accuracy = 0
-best_metrics = defaultdict(list)
-best_hyperparams = None
-best_model = None
-best_train_losses = None
-best_test_losses = None
-
-# perform a grid search over all combinations of hyperparameters
-for lr in learning_rates:
-    for dropout_rate in dropout_rates:
-        for initializer in initializers:
-            model = get_model('resnet', dropout_rate, initializer)  # replace 'resnet' with your preferred model
-            model = model.to(device)
-            criterion = nn.CrossEntropyLoss()
-            optimizer = torch.optim.Adam(model.parameters(), lr=lr)
-
-            train_losses = train_model(model, criterion, optimizer, train_loader, args.epochs)
-            test_metrics, test_losses = test_model(model, criterion, test_loader)
-
-            # if the model with the current set of hyperparameters
-            # has a better accuracy than the previous best model,
-            # update the best accuracy and best set of hyperparameters
-            if test_metrics['accuracy'] > best_accuracy:
-                best_model = model
-                best_metrics = test_metrics
-                best_hyperparams = {'learning_rate': lr, 'dropout_rate': dropout_rate, 'initializer': initializer}
-                best_train_losses = train_losses
-                best_test_losses = test_losses
-
+avg_time_all_epochs = sum(test_times) / len(test_times)
+with open(f'{args.model}_inference_times.txt', 'w') as f:
+    f.write("Average Inference Time of Batch, each Epoch")
+    for t in range(len(test_times)):
+        f.write(f"Epoch {t + 1}: {test_times[t]}")
+    f.write(f"Average Inference Time of Batch, all Epochs: {avg_time_all_epochs}")
 
 print('Training and testing complete.')
 
