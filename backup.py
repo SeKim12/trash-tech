@@ -13,9 +13,11 @@ import seaborn as sns
 import matplotlib.pyplot as plt
 from tqdm import tqdm
 from collections import defaultdict
-import time
 
 def get_model(model_name, dropout_rate, initializer='xavier'):
+import time
+
+def get_model(model_name):
     if model_name == 'resnet':
         model = resnet50(pretrained=True)
         num_ftrs = model.fc.in_features
@@ -57,6 +59,7 @@ parser.add_argument('--dropout_rate', type=float, default=0.5, help='Dropout rat
 args = parser.parse_args()
 
 def train_model(model, criterion, optimizer, train_loader, epochs, device):
+
     train_losses = []
     for epoch in range(epochs):
         model.train()
@@ -85,7 +88,6 @@ def test_model(model, criterion, test_loader, device):
     all_labels = []
     all_preds = []
     test_losses = []
-    test_times = []
     pbar = tqdm(total=len(test_loader), desc=f"Testing")
 
     avg_inference_time = 0
@@ -170,6 +172,14 @@ for lr in learning_rates:
                 best_train_losses = train_losses
                 best_test_losses = test_losses
 
+
+avg_time_all_epochs = sum(test_times) / len(test_times)
+with open(f'{args.model}_inference_times.txt', 'w') as f:
+    f.write("Average Inference Time of Batch, each Epoch")
+    for t in range(len(test_times)):
+        f.write(f"Epoch {t + 1}: {test_times[t]}")
+    f.write(f"Average Inference Time of Batch, all Epochs: {avg_time_all_epochs}")
+
 avg_time_all_epochs = sum(test_times) / len(test_times)
 with open(f'{args.model}_inference_times.txt', 'w') as f:
     f.write("Average Inference Time of Batch, each Epoch")
@@ -194,8 +204,8 @@ plt.savefig(f'results/{args.model}_best_confusion_matrix.png')
 
 # Plot performance curve of best model
 plt.figure()
-plt.plot(range(args.epochs), best_train_losses, label='Train Loss')
-plt.plot(range(args.epochs), best_test_losses, label='Test Loss')
+plt.plot(range(args.epochs), train_losses, label='Train Loss')
+plt.plot(range(args.epochs), test_losses, label='Test Loss')
 plt.xlabel('Epoch')
 plt.ylabel('Loss')
 plt.legend()
