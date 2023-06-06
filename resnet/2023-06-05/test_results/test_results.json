@@ -1,0 +1,15 @@
+{
+    "accuracy": 0.8924302788844621,
+    "precision": 0.8755271935878343,
+    "recall": 0.8769426115545379,
+    "test_loss": 0.30835174677144006,
+    "inference_time_per_batch": 0.007193446159362793,
+    "total_inference_time": 0.11509513854980469,
+    "args": {
+        "checkpoint_dir": "checkpoint",
+        "model_name": "resnet",
+        "learning_rate": 0.001,
+        "dropout_rate": 0.1,
+        "initializer": "he"
+    }
+}
