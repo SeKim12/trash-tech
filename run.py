@@ -16,8 +16,6 @@ TRAIN_RESULTS_DIR = "train_results"
 CHECKPOINT_DIR = "checkpoint"
 DATA_DIR = "data/dataset-resized"
 
-os.makedirs(CHECKPOINT_DIR, exist_ok=True)
-
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--debug", type=bool, default=False)
@@ -29,7 +27,9 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     # TODO: Add MobileNet
-    mdls = [args.model] if args.model != "all" else ["resnet", "vgg16", "vit"]
+    mdls = (
+        [args.model] if args.model != "all" else ["resnet", "vgg16", "vit", "mobilenet"]
+    )
 
     # perform a grid search over all combinations of hyperparameters
     learning_rates = [0.1, 0.01, 0.001] if not args.debug else [0.1]

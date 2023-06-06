@@ -1,6 +1,6 @@
 import torch
 import torch.nn as nn
-from torchvision.models import resnet50, vgg16, vit_b_16
+from torchvision.models import resnet50, vgg16, vit_b_16, mobilenet_v3_large
 from sklearn.metrics import (
     precision_score,
     recall_score,
@@ -59,6 +59,19 @@ def get_model(model_name, dropout_rate, initializer="xavier"):
         model.heads[0] = nn.Sequential(nn.Dropout(dropout_rate), nn.Linear(num_ftrs, 6))
 
         init(model.heads[0][1].weight)
+    elif model_name == "mobilenet":
+        print("Retreiving MobileNet...")
+        model = mobilenet_v3_large(weights="MobileNet_V3_Large_Weights.DEFAULT")
+
+        num_ftrs = model.classifier[3].in_features
+
+        for param in model.parameters():
+            param.requires_grad = False
+
+        model.classifier[2] = nn.Dropout(dropout_rate)
+        model.classifier[3] = nn.Linear(num_ftrs, 6)
+
+        init(model.classifier[3].weight)
 
     else:
         raise ValueError("Invalid model name. Choose from 'resnet', 'vgg16', 'vit'.")
