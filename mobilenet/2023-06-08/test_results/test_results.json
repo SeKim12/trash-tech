@@ -1,0 +1,15 @@
+{
+    "accuracy": 0.6254980079681275,
+    "precision": 0.6000356879935126,
+    "recall": 0.5828390537164824,
+    "test_loss": 0.95105829751824,
+    "inference_time_per_batch": 0.008587345480918884,
+    "total_inference_time": 0.13739752769470215,
+    "args": {
+        "checkpoint_dir": "checkpoint",
+        "model_name": "mobilenet",
+        "learning_rate": 0.001,
+        "dropout_rate": 0.1,
+        "initializer": "xavier"
+    }
+}

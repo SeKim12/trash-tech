@@ -60,72 +60,77 @@ if __name__ == "__main__":
 
         # save best model (across all hyperparameters)
         glob_best_val_acc = -1
+        if mdl == "vit":
+            lr = 0.01
+        else:
+            lr = 0.001
+        if mdl == "mobilenet":
+            initializer = "xavier"
+        else:
+            initializer = "he"
+        dropout_rate = 0.1
+        model = get_model(mdl, dropout_rate, initializer).to(device)
+        print(
+            f"=====> Testing LR: {lr}, Dropout Rate: {dropout_rate}, Initializer: {initializer}"
+        )
+        config = {
+            "checkpoint_dir": CHECKPOINT_DIR,
+            "model_name": mdl,
+            "learning_rate": lr,
+            "dropout_rate": dropout_rate,
+            "initializer": initializer,
+        }
+        optimizer = torch.optim.Adam(model.parameters(), lr=lr)
 
-        for lr in learning_rates:
-            for dropout_rate in dropout_rates:
-                for initializer in initializers:
-                    model = get_model(mdl, dropout_rate, initializer).to(device)
-                    print(
-                        f"=====> Testing LR: {lr}, Dropout Rate: {dropout_rate}, Initializer: {initializer}"
-                    )
-                    config = {
-                        "checkpoint_dir": CHECKPOINT_DIR,
-                        "model_name": mdl,
-                        "learning_rate": lr,
-                        "dropout_rate": dropout_rate,
-                        "initializer": initializer,
-                    }
-                    optimizer = torch.optim.Adam(model.parameters(), lr=lr)
+        (
+            train_losses,
+            val_losses,
+            val_metrics,
+            glob_best_val_acc,
+        ) = train_model(
+            model,
+            config,
+            criterion,
+            optimizer,
+            train_loader,
+            val_loader,
+            args.epochs,
+            device,
+            glob_best_val_acc,
+        )
 
-                    (
-                        train_losses,
-                        val_losses,
-                        val_metrics,
-                        glob_best_val_acc,
-                    ) = train_model(
-                        model,
-                        config,
-                        criterion,
-                        optimizer,
-                        train_loader,
-                        val_loader,
-                        args.epochs,
-                        device,
-                        glob_best_val_acc,
-                    )
+        # overall
+        # test_metrics, test_loss, conf_matrix = test_model(model, criterion, test_loader)
 
-                    # overall
-                    # test_metrics, test_loss, conf_matrix = test_model(model, criterion, test_loader)
+        results[mdl] = results.get(mdl, {})
+        results[mdl][
+            f"lr={lr}, dropout_rate={dropout_rate}, initializer={initializer}"
+        ] = {
+            "learning_rate": lr,
+            "dropout_rate": dropout_rate,
+            "initializer": initializer,
+            "train_losses": train_losses,
+            "val_losses": val_losses,
+            "val_metrics": val_metrics,
+        }
 
-                    results[mdl] = results.get(mdl, {})
-                    results[mdl][
-                        f"lr={lr}, dropout_rate={dropout_rate}, initializer={initializer}"
-                    ] = {
-                        "learning_rate": lr,
-                        "dropout_rate": dropout_rate,
-                        "initializer": initializer,
-                        "train_losses": train_losses,
-                        "val_losses": val_losses,
-                        "val_metrics": val_metrics,
-                    }
-
-                    # record best so far
-                    # this is for convenience, the results are a duplicate of the above
-                    results[mdl]["best"] = results[mdl].get(
-                        "best", {"val_metrics": {"accuracy": -1}}
-                    )
-                    if (
-                        val_metrics["accuracy"]
-                        > results[mdl]["best"]["val_metrics"]["accuracy"]
-                    ):
-                        results[mdl]["best"] = {
-                            "learning_rate": lr,
-                            "dropout_rate": dropout_rate,
-                            "initializer": initializer,
-                            "train_losses": train_losses,
-                            "val_losses": val_losses,
-                            "val_metrics": val_metrics,
-                        }
+        # record best so far
+        # this is for convenience, the results are a duplicate of the above
+        results[mdl]["best"] = results[mdl].get(
+            "best", {"val_metrics": {"accuracy": -1}}
+        )
+        if (
+            val_metrics["accuracy"]
+            > results[mdl]["best"]["val_metrics"]["accuracy"]
+        ):
+            results[mdl]["best"] = {
+                "learning_rate": lr,
+                "dropout_rate": dropout_rate,
+                "initializer": initializer,
+                "train_losses": train_losses,
+                "val_losses": val_losses,
+                "val_metrics": val_metrics,
+            }
 
     print("Training complete.")
 
@@ -149,6 +154,7 @@ if __name__ == "__main__":
         plt.ylabel("Loss")
         plt.legend(["Train Loss", "Val Loss"])
         plt.savefig(os.path.join(dir_path, "loss_curve.png"))
+        plt.clf()
 
     # start testing
     for mdl in mdls:
@@ -168,6 +174,7 @@ if __name__ == "__main__":
 
         sns.heatmap(conf_matrix, annot=True)
         plt.savefig(os.path.join(dir_path, "confusion_matrix.png"))
+        plt.clf()
 
         with open(os.path.join(dir_path, "test_results.json"), "w+") as f:
             json.dump(test_metrics, f, indent=4)

@@ -23,7 +23,16 @@ from torch.utils.data import Subset, random_split, ConcatDataset, Dataset, DataL
 #     label = self.labels[index]
 #     return feature, label
 
-
+class AddGaussianNoise(object):
+  def __init__(self, mean=0., std=1.):
+    self.std = std
+    self.mean = mean
+  
+  def __call__(self, tensor):
+    return tensor + torch.randn(tensor.size()) * self.std + self.mean
+  
+  def __repr__(self):
+    return self.__class__.__name__ + '(mean={0}, std={1})'.format(self.mean, self.std)
 
 class SiftExtractor:
   def __init__(self, dataset, sample_size=15, vocab_size=200, debug=False):
@@ -123,6 +132,7 @@ def generate_split(data_dir="data/dataset-resized", fracs=[0.8, 0.1, 0.1], seed=
         transforms.Resize((224, 224)),
         transforms.ToTensor(),
         transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+        AddGaussianNoise(0., 1.)
     ])
 
     imgs = ImageFolder(data_dir, transform)

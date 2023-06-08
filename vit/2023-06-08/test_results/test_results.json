@@ -1,0 +1,15 @@
+{
+    "accuracy": 0.7609561752988048,
+    "precision": 0.7995564133722027,
+    "recall": 0.7288452616925126,
+    "test_loss": 1.2405561683662385,
+    "inference_time_per_batch": 0.004779130220413208,
+    "total_inference_time": 0.07646608352661133,
+    "args": {
+        "checkpoint_dir": "checkpoint",
+        "model_name": "vit",
+        "learning_rate": 0.01,
+        "dropout_rate": 0.1,
+        "initializer": "he"
+    }
+}
